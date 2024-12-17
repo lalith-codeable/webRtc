@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import useWebSocket from "react-use-websocket";
+
 import {
     User,
     IncomingMessage,
@@ -9,7 +10,7 @@ import {
 
 const Home = ({ username }: { username: string }) => {
     const [users, setUsers] = useState<Record<string, User>>({});
-    const WS_URL = `ws://localhost:8000`;
+    const WS_URL = "wss://ws.lalith.xyz";
 
     // WebSocket connection
     const { sendJsonMessage, lastJsonMessage } = useWebSocket(WS_URL, {
