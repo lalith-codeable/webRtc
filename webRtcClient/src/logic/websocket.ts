@@ -1,42 +1,34 @@
 import { SendJsonMessage } from "react-use-websocket/dist/lib/types";
+import { handleConnectionEnd } from "./webrtc";
 
-// Incoming WebSocket message type
+export type User = {
+    username: string;
+};
+export type MsgType = "offer" | "answer" | "iceCandidate";
+
 export type IncomingMessage = {
     type: "broadcast" | "rtc";
     payload: any;
 };
 
-// Broadcast payload: A map of connected users
 export type BroadcastPayload = Record<string, User>;
 
-// SDP Offer Payload
 export type SdpOfferPayload = {
     recipient: string;
     type: MsgType;
     sdp: RTCSessionDescriptionInit;
 };
 
-// SDP Answer Payload
 export type SdpAnswerPayload = {
     type: MsgType;
     sdp: RTCSessionDescriptionInit;
 };
 
-// ICE Candidate Payload
 export type IcePayload = {
     type: MsgType;
     ice: RTCIceCandidateInit;
 };
 
-// User information type
-export type User = {
-    username: string;
-};
-
-// Message types for RTC signaling
-export type MsgType = "offer" | "answer" | "iceCandidate";
-
-// Type guards for validation
 const isSdpOfferPayload = (payload: any): payload is SdpOfferPayload =>
     payload && payload.type === "offer" && payload.sdp;
 
@@ -46,22 +38,91 @@ const isSdpAnswerPayload = (payload: any): payload is SdpAnswerPayload =>
 const isIcePayload = (payload: any): payload is IcePayload =>
     payload && payload.type === "iceCandidate" && payload.ice;
 
-// RTC Message Handler
-export const handleRtcMessage = async (
-    pc: RTCPeerConnection,
-    sendJsonMessage: SendJsonMessage,
-    payload: any
-) => {
+export const handleRtcMessage = async ({
+    pcRef,
+    sendJsonMessage,
+    payload,
+    setSwitchToStream,
+    setLocalStream,
+    setRemoteStream,
+    setIsOffering
+}: {
+    pcRef: React.MutableRefObject<RTCPeerConnection | null>;
+    sendJsonMessage: SendJsonMessage;
+    payload: any;
+    setSwitchToStream: React.Dispatch<React.SetStateAction<boolean>>;
+    setLocalStream: React.Dispatch<React.SetStateAction<MediaStream | null>>,
+    setIsOffering: React.Dispatch<React.SetStateAction<boolean>>,
+    setRemoteStream: React.Dispatch<React.SetStateAction<MediaStream | null>>,
+}) => {
     try {
+        if(!pcRef.current){
+
+            const localStream= await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            setLocalStream(localStream);
+            const pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: "stun:stun.l.google.com:19302" },
+                    { urls: "stun:stun1.l.google.com:19302" },
+                ],
+            });
+
+            pc.onicecandidate = (event) => {
+            setSwitchToStream(true);
+            if (event.candidate) {
+                sendJsonMessage({
+                    type: "iceCandidate",
+                    ice: event.candidate,
+                });
+            }
+            };
+
+            //remote track from peer
+            pc.ontrack = (event) => {
+            if (event.streams[0]) {
+                setRemoteStream(event.streams[0]);
+                }
+            };
+        
+            localStream.getTracks().forEach((track) => {
+               pc.addTrack(track, localStream);
+            })
+
+            pc.oniceconnectionstatechange = () => {
+                const state = pc.iceConnectionState;
+                console.log("ICE Connection State:", state);
+    
+                if (state === "disconnected") {
+                    console.warn("Connection lost. Attempting reconnection...");
+                    // Optional: Handle reconnection logic
+                }
+    
+                if (state === "failed" || state === "closed") {
+                    console.error("Connection failed or closed. Cleaning up...");
+                    // Cleanup resources if the connection fails
+                    handleConnectionEnd({
+                        localStream,
+                        setLocalStream,
+                        setIsOffering,
+                        setSwitchToStream,
+                        setRemoteStream,
+                        pcRef
+                    });
+                }
+            };       
+            pcRef.current = pc;
+        }
+        
         if (isSdpAnswerPayload(payload)) {
-            // Handle SDP Answer
-            await pc.setRemoteDescription(payload.sdp);
+
+            await pcRef.current.setRemoteDescription(payload.sdp);
             console.log("Remote SDP answer set successfully.");
+
         } else if (isSdpOfferPayload(payload)) {
-            // Handle SDP Offer and generate an Answer
-            await pc.setRemoteDescription(payload.sdp);
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
+
+            await pcRef.current.setRemoteDescription(payload.sdp);
+            const answer = await pcRef.current.createAnswer();
+            await pcRef.current.setLocalDescription(answer);
 
             console.log("Generated and sent answer:", answer);
             const message: SdpAnswerPayload = {
@@ -69,10 +130,12 @@ export const handleRtcMessage = async (
                 sdp: answer,
             };
             sendJsonMessage(message);
+
         } else if (isIcePayload(payload)) {
-            // Handle ICE Candidate
-            await pc.addIceCandidate(payload.ice);
+            
+            await pcRef.current.addIceCandidate(payload.ice);
             console.log("ICE candidate added:", payload.ice);
+
         } else {
             console.warn("Unknown or invalid RTC message:", payload);
         }
@@ -80,3 +143,5 @@ export const handleRtcMessage = async (
         console.error("Error handling RTC message:", error);
     }
 };
+
+
