@@ -5,11 +5,14 @@ import {
     User,
     IncomingMessage,
     BroadcastPayload,
-    handleRtcMessage
+    handleRtcMessage,
 } from "../logic/websocket";
 
 const Home = ({ username }: { username: string }) => {
     const [users, setUsers] = useState<Record<string, User>>({});
+    const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+    const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+
     const WS_URL = "wss://ws.lalith.xyz";
 
     // WebSocket connection
@@ -21,22 +24,25 @@ const Home = ({ username }: { username: string }) => {
     // RTCPeerConnection reference
     const pcRef = useRef<RTCPeerConnection | null>(null);
 
-    // Initialize RTCPeerConnection
+    // Initialize media and RTCPeerConnection
     useEffect(() => {
+        // Access local media
+        navigator.mediaDevices
+            .getUserMedia({ video: true, audio: true })
+            .then((stream) => {
+                setLocalStream(stream);
+            })
+            .catch((error) => console.error("Error accessing media devices:", error));
+
         const pc = new RTCPeerConnection({
             iceServers: [
-                { urls: "stun:stun.ekiga.net"},
-                { urls: "stun:stun.ideasip.com"},
-                { urls: "stun:stun.ekiga.net"},
-                { urls: "stun:stun.iptel.org"},
-                { urls: "stun:stun.l.google.com:19302" }
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:stun1.l.google.com:19302" },
             ],
-            iceCandidatePoolSize: 10, // Increased the pool size
         });
 
         pc.onicecandidate = (event) => {
             if (event.candidate) {
-                console.log("New ICE candidate:", event.candidate);
                 sendJsonMessage({
                     type: "iceCandidate",
                     ice: event.candidate,
@@ -44,16 +50,14 @@ const Home = ({ username }: { username: string }) => {
             }
         };
 
-        pc.onicecandidateerror = (event) => {
-            console.error("ICE Candidate Error:", event);
+        pc.ontrack = (event) => {
+            if (event.streams[0]) {
+                setRemoteStream(event.streams[0]);
+            }
         };
 
         pc.oniceconnectionstatechange = () => {
             console.log("ICE Connection State:", pc.iceConnectionState);
-        };
-
-        pc.onicegatheringstatechange = () => {
-            console.log("ICE Gathering State:", pc.iceGatheringState);
         };
 
         pcRef.current = pc;
@@ -65,6 +69,15 @@ const Home = ({ username }: { username: string }) => {
             }
         };
     }, [sendJsonMessage]);
+
+    // Add local tracks to RTCPeerConnection when the stream is ready
+    useEffect(() => {
+        if (localStream && pcRef.current) {
+            localStream.getTracks().forEach((track) => {
+                pcRef.current?.addTrack(track, localStream);
+            });
+        }
+    }, [localStream]);
 
     // Handle incoming WebSocket messages
     useEffect(() => {
@@ -87,10 +100,8 @@ const Home = ({ username }: { username: string }) => {
         if (!pcRef.current) return;
         try {
             const offer = await pcRef.current.createOffer({ iceRestart: true });
-            console.log("Offer created, ICE Gathering State:", pcRef.current.iceGatheringState);
             await pcRef.current.setLocalDescription(offer);
 
-            console.log("Generated and sent offer:", offer);
             sendJsonMessage({
                 to,
                 type: "offer",
@@ -104,6 +115,29 @@ const Home = ({ username }: { username: string }) => {
     return (
         <div>
             <div>Home: {username}</div>
+            <div>
+                <video
+                    playsInline
+                    muted
+                    autoPlay
+                    ref={(video) => {
+                        if (video && localStream) {
+                            video.srcObject = localStream;
+                        }
+                    }}
+                    style={{ width: "300px", height: "200px", border: "1px solid black" }}
+                />
+                <video
+                    playsInline
+                    autoPlay
+                    ref={(video) => {
+                        if (video && remoteStream) {
+                            video.srcObject = remoteStream;
+                        }
+                    }}
+                    style={{ width: "300px", height: "200px", border: "1px solid black" }}
+                />
+            </div>
             <ul>
                 {Object.keys(users).map((uuid) => (
                     <li key={uuid}>
