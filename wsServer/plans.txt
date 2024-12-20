@@ -1,0 +1,4 @@
+//connect -> create get and set localStream for both sides 
+//approve -> create rtc -> send offer -> reciveve offer -> create rtc -> send answer <-> ice exchange
+//reject -> stop localstream -> set media to null
+//disconnect -> stop localstream -> set media to null -> clean rtc connection -> set Triggers back to normal

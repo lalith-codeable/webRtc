@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { useSetRecoilState } from "recoil";
 import { motion } from "framer-motion";
+import { usernameAtom } from "../recoil/atom";
 
-const Login = ({ onSubmit }: { onSubmit: (username: string) => void }) => {
+const Login = () => {
+    const onSubmit = useSetRecoilState(usernameAtom);
     const [username, setUsername] = useState("");
 
     return (
@@ -75,4 +78,4 @@ const Login = ({ onSubmit }: { onSubmit: (username: string) => void }) => {
     );
 };
 
-export default Login;
+export { Login }

@@ -1,35 +1,49 @@
 import { motion } from "framer-motion"
+import { LoaderPinwheelIcon,PhoneCallIcon } from "lucide-react"
+import { isCallingAtom, localStreamAtom, usernameAtom, usersAtom } from "../recoil/atom"
+import { useRecoilState, useRecoilValue, useSetRecoilState } from "recoil"
+import { RTCMessage } from "../types"
 import { SendJsonMessage } from "react-use-websocket/dist/lib/types"
-import { LoaderPinwheelIcon,WebhookIcon } from "lucide-react"
-import { initiateRtcCall } from "../logic/webrtc"
 
-export const WhoIsOnline = ({ 
-    users, 
-    username, 
-    pcRef,
-    setIsOffering,
-    setLocalStream,
-    setSwitchToStream,
-    setRemoteStream,
-    sendJsonMessage,
-    isOffering
+const Userlist = ({
+    sendJsonMessage
 }:{
-    users: Record<string, {username: string}>,
-    username: string,
-    pcRef: React.MutableRefObject<RTCPeerConnection | null>,
-    setIsOffering: React.Dispatch<React.SetStateAction<boolean>>,
-    setLocalStream: React.Dispatch<React.SetStateAction<MediaStream | null>>,
-    setSwitchToStream: React.Dispatch<React.SetStateAction<boolean>>,
-    setRemoteStream: React.Dispatch<React.SetStateAction<MediaStream | null>>,
-    sendJsonMessage: SendJsonMessage,
-    isOffering: boolean
-}
-
-) => {
-    
+    sendJsonMessage: SendJsonMessage
+}) => {
+    const users = useRecoilValue(usersAtom);
+    const username = useRecoilValue(usernameAtom);
+    const [isCalling, setIsCalling]= useRecoilState(isCallingAtom);
+    const setLocalStream = useSetRecoilState(localStreamAtom);
+   
+    const RtcCall = async ({
+        recipient
+    }:{
+        recipient: string
+    }) => {
+        
+        setIsCalling(true);
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true});
+        setLocalStream(stream);
+        let uuid = "";
+        Object.keys(users).forEach((id)=>{
+            if(users[id].username === username){
+                uuid = id;
+            }
+        })
+        
+        const message: RTCMessage= {
+            recipient,
+            type: "connect",
+            sender: uuid
+        }
+        sendJsonMessage(message);
+        console.log(uuid+ message + "sent");
+        console.log(message);
+    }
   return (
     <>
         <div className="flex items-center space-x-4 pt-8 pl-8 pb-4">
+           
                 {/* Animated Logo */}
                 <motion.div
                     className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-700 rounded-full flex items-center justify-center shadow-lg"
@@ -67,31 +81,27 @@ export const WhoIsOnline = ({
                 {
                     Object.keys(users).map((uuid)=>{
                         return users[uuid].username !== username && (
-                            <div className="w-5/6 h-16 border-2 grid grid-cols-3 px-4  rounded-md">
-                                <span className="col-span-2 flex justify-center items-center">
+                            <div className="w-full h-16 border-2 grid grid-cols-2 px-2 rounded-md" key={uuid}>
+                                <span className="flex justify-center items-center ">
                                     <h2 className="w-full tracking-wide text-2xl">{users[uuid].username}</h2>
                                 </span>
-                                <span className="flex justify-center items-center">
+                                <span className="flex justify-end items-center ">
                                 <button 
                                     type="button"
-                                    className="col-start-3 text-xl  text-white font-bold bg-green-600 px-4 py-2 rounded-lg" 
-                                    onClick={()=> initiateRtcCall({
-                                        setLocalStream,
-                                        setIsOffering,
-                                        setRemoteStream,
-                                        setSwitchToStream,
-                                        pcRef,
-                                        sendJsonMessage,
-                                        to: uuid
-                                    })}
-                                    disabled={isOffering}
+                                    className={`text-xl  text-white font-bold  px-2 py-1 rounded-lg ${isCalling ? "bg-slate-500" : "bg-green-600"}`} 
+                                    onClick={()=>{
+                                        RtcCall({ recipient: uuid})
+                                    }}
+                                    disabled={isCalling}
                                 >
-                                {isOffering ?(
-                                <span className="flex items-center">
+                                {isCalling ?(
+                                <span className="flex gap-1 items-center p-1">
                                     <LoaderPinwheelIcon className="animate-spin"/>
+                                    Connecting
                                 </span>
-                                ):(<span>
-                                    <WebhookIcon/>
+                                ):(<span className="flex gap-1 items-center p-1">
+                                    <PhoneCallIcon />
+                                    Connect
                                 </span>)}
                                 </button>
                                 </span>    
@@ -104,3 +114,5 @@ export const WhoIsOnline = ({
     </>
   )
 }
+
+export { Userlist }

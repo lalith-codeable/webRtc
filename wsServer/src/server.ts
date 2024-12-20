@@ -15,13 +15,14 @@ type OutgoingMessage = {
     payload: any;
 };
 
-type MsgType = "offer" | "answer" | "iceCandidate";
+type MsgType = "answer" | "iceCandidate" | "connect" | "disconnect" | "approve" | "reject";
 
 type RTCMessage = {
     type: MsgType;
-    to?: string;
+    recipient?: string;
     sdp?: RTCSessionDescriptionInit;
     ice?: RTCIceCandidateInit;
+    sender?: string;
 };
 
 type User = {
@@ -59,6 +60,7 @@ wss.on("connection", (connection: WebSocket, request: http.IncomingMessage): voi
 
 // Handle incoming WebRTC messages
 const handleMessage = (bytes: Buffer, uuid: string): void => {
+    try{
     const message: RTCMessage = JSON.parse(bytes.toString());
     const user = users[uuid];
 
@@ -67,30 +69,71 @@ const handleMessage = (bytes: Buffer, uuid: string): void => {
         return;
     }
 
-    if (message.type === "offer") {
-        if (!message.to) {
-            console.error("Recipient ID missing in offer message.");
+    if (message.type === "connect") {
+        if (!message.recipient) {
+            console.error("Recipient ID missing in connect message.");
             return;
         }
-        // Store WebRTC connections
-        webrtcConnections[uuid] = message.to;
-        webrtcConnections[message.to] = uuid;
-
-        const recipientConnection = connections[message.to];
+        
+        const recipientConnection = connections[message.recipient];
         if (!recipientConnection) {
-            console.error(`Recipient connection ${message.to} not found.`);
+            console.error(`Recipient connection ${message.recipient} not found.`);
             return;
         }
 
         const response: OutgoingMessage = {
             type: "rtc",
-            payload: message,
+            payload: {
+                type: "connect",
+                sender: uuid
+            } as RTCMessage
         };
         recipientConnection.send(JSON.stringify(response));
-        console.log(`Offer sent from ${uuid} to ${message.to}`);
-    } else if (message.type === "iceCandidate" || message.type === "answer") {
-        console.log(`${message.type} received from: ${uuid}`);
+        console.log(`Offer sent from ${uuid} to ${message.recipient}`);
 
+    }else if (message.type === "reject") {
+
+        if (!message.recipient) {
+            console.error("Recipient ID missing in reject message.");
+            return;
+        }
+        
+        const recipientConnection = connections[message.recipient];
+        if (!recipientConnection) {
+            console.error(`Recipient connection ${message.recipient} not found.`);
+            return;
+        }
+
+        const response: OutgoingMessage = {
+            type: "rtc",
+            payload: {
+                type: "reject",
+                sender: uuid
+            } as RTCMessage
+        };
+        recipientConnection.send(JSON.stringify(response));
+        console.log(`Offer sent from ${uuid} to ${message.recipient}`);
+
+    } else if(message.type === "approve") {
+        if(!message.recipient){
+            console.error("Recipient ID missing in approval message.");
+            return;
+        }
+        // Store WebRTC connections
+        webrtcConnections[uuid] = message.recipient;
+        webrtcConnections[message.recipient] = uuid;
+
+        const recipientConnection = connections[message.recipient];
+        const response: OutgoingMessage = {
+            type: "rtc",
+            payload:{ ... message,
+                sender: uuid
+            } as RTCMessage
+        };
+        recipientConnection.send(JSON.stringify(response));
+
+    } else {
+        console.log(`${message.type} received from: ${uuid}`);
         const recipientId = webrtcConnections[uuid];
         const recipientConnection = connections[recipientId];
         if (!recipientConnection) {
@@ -100,15 +143,21 @@ const handleMessage = (bytes: Buffer, uuid: string): void => {
 
         const response: OutgoingMessage = {
             type: "rtc",
-            payload: message,
+            payload:{ ... message,
+                sender: uuid
+            } as RTCMessage
         };
         recipientConnection.send(JSON.stringify(response));
         console.log(`${message.type} forwarded to ${recipientId}`);
     }
+} catch(_) {
+    console.warn("Runtime error poped up -_- | Suppressed");
+}
 };
 
 // Handle WebSocket disconnections
 const handleClose = (uuid: string): void => {
+try{
     const user = users[uuid];
 
     if (!user) {
@@ -124,12 +173,23 @@ const handleClose = (uuid: string): void => {
 
     const peerId = webrtcConnections[uuid];
     if (peerId) {
+        const peer = connections[peerId];
+        const disconnectMsg: OutgoingMessage = {
+            type:"rtc",
+            payload: {
+                type: "disconnect"
+            } as RTCMessage
+        }
+        peer.send(JSON.stringify(disconnectMsg));
         delete webrtcConnections[peerId];
         delete webrtcConnections[uuid];
         console.log(`Removed WebRTC mapping for ${uuid} and ${peerId}`);
     }
 
     broadcast();
+} catch(_){
+    console.warn("Runtime error poped up -_- | Suppressed");
+} 
 };
 
 // Broadcast updated user list to all connected clients
