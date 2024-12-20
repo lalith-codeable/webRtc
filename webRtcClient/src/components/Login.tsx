@@ -8,7 +8,7 @@ const Login = () => {
     const [username, setUsername] = useState("");
 
     return (
-        <div className="flex items-center justify-center h-screen bg-gradient-to-br from-cyan-500 to-indigo-600 text-white">
+        <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-cyan-500 to-indigo-600 text-white">
             {/* Brand Section */}
             <div className="absolute top-8 left-8 flex items-center space-x-4">
                 {/* Animated Logo */}
@@ -74,6 +74,16 @@ const Login = () => {
                     </button>
                 </form>
             </motion.div>
+            <div className="w-screen my-2 mx-1 p-2 text-black text-sm flex justify-center items-center">
+                All rights are reserved by 
+                <a 
+                    href="https://github/lalith-codeable/webrtc" 
+                    className="underline-offset-2 px-1"
+                >
+                lalith_borana@2025
+                </a>
+                
+            </div>
         </div>
     );
 };
